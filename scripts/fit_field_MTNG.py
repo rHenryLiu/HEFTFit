@@ -30,7 +30,7 @@ warnings.filterwarnings('ignore', category=AsdfWarning)
 
 sys.path.append('../velocileptors') # clone the velocileptors from github 
 from velocileptors.LPT.cleft_fftw import CLEFT
-sys.path.append('../HEFTFit') # Add the HEFTFit package
+sys.path.append('../') # Add the HEFTFit package
 from HEFTFit.field_utils import *
 from HEFTFit.HEFTFit import HEFTFit
 
@@ -464,20 +464,20 @@ for options in ['field-level-brute', 'field-level-scale', 'field-level-matrix', 
 print(dict_list[0].keys())
 
 r_pk = dict_list[0]['r_pk']
-r_pk_bk = dict_list[1]['r_pk_bk']
-r_pk_alt = dict_list[2]['r_pk_alt']
-r_pk_fit = dict_list[3]['r_pk_fit']
+r_pk_bk = dict_list[1]['r_pk']
+r_pk_alt = dict_list[2]['r_pk']
+r_pk_fit = dict_list[3]['r_pk']
 
 pk_mod = dict_list[0]['pk_mod']
-pk_mod_bk = dict_list[1]['pk_mod_bk']
-pk_mod_alt = dict_list[2]['pk_mod_alt']
-pk_mod_fit = dict_list[3]['pk_mod_fit']
+pk_mod_bk = dict_list[1]['pk_mod']
+pk_mod_alt = dict_list[2]['pk_mod']
+pk_mod_fit = dict_list[3]['pk_mod']
 pk_tau = Fit_fn.pk_tau
 
 pk_err = dict_list[0]['pk_err']
-pk_err_bk = dict_list[1]['pk_err_bk']
-pk_err_alt = dict_list[2]['pk_err_alt']
-pk_err_fit = dict_list[3]['pk_err_fit']
+pk_err_bk = dict_list[1]['pk_err']
+pk_err_alt = dict_list[2]['pk_err']
+pk_err_fit = dict_list[3]['pk_err']
 
 # Testing at power-spectrum level
 
