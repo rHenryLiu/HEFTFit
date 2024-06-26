@@ -87,6 +87,22 @@ def load_velocities(z, path):
         vel.append(np.load(path + 'velocity_sorted_' + string + '_MTNG-L500-1080-A_part{}_of_10.npy'.format(i)))
     return np.concatenate(vel)
 
+def load_tau(z, path):
+    """
+    Load velocities for the MillenniumTNG Simulation
+    """
+    if z==0.:
+        string = '264'
+    elif z==0.5:
+        string = '214'
+    elif z==1.0:
+        string = '179'
+    else:
+        raise Exception("Redshift z is not one of the allowed values")
+    
+    result = np.load(path + 'tau_3d_snap_' + string + '.npy')
+    return result
+
 
 
 def gaussian_filter(field, nmesh, lbox, kcut):

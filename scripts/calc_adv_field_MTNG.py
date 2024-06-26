@@ -34,8 +34,8 @@ print('Load Configs', time.time()-t0)
 heft_dir = '/pscratch/sd/r/rhliu/projects/heft_scratch/'
 nmesh = 1080
 kcut = 0.
-# z_mock = 0. # config['sim_params']['z_mock']
-z_mock = 1. # config['sim_params']['z_mock']
+z_mock = 0. # config['sim_params']['z_mock']
+# z_mock = 1. # config['sim_params']['z_mock']
 
 sim_name = 'MTNG'
 save_dir = Path(heft_dir) / sim_name
@@ -398,4 +398,4 @@ for i, field in enumerate(fields):
         count += 1
 
 plt.tight_layout()
-plt.savefig("../figures/comparison_MTNG_offset6.png")
+plt.savefig("../figures/comparison_MTNG_offset_z0.png")

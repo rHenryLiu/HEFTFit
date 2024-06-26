@@ -9,19 +9,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import yaml
 import numba
-#from np.fft import fftfreq, fftn, ifftn
 from scipy.fft import rfftn, irfftn
 
 from classy import Class
 # from abacusnbody.metadata import get_meta
 from abacusnbody.analysis.tsc import tsc_parallel #put it on a grid using tsc interpolation
 from abacusnbody.analysis.power_spectrum import calc_pk_from_deltak #computes power spectrum from density contrast, not specific to abacus 
-# from obtain_IC_fields import compress_asdf
 import time
 
 from asdf.exceptions import AsdfWarning
 warnings.filterwarnings('ignore', category=AsdfWarning)
-# from obtain_IC_fields import *
 
 import sys
 sys.path.append('../velocileptors') # clone the velocileptors from github 
@@ -37,8 +34,8 @@ print('Load Configs', time.time()-t0)
 heft_dir = '/pscratch/sd/r/rhliu/projects/heft_scratch/'
 nmesh = 1080
 kcut = 0.
-# z_mock = 0. # config['sim_params']['z_mock']
-z_mock = 1. # config['sim_params']['z_mock']
+z_mock = 0. # config['sim_params']['z_mock']
+# z_mock = 1. # config['sim_params']['z_mock']
 
 sim_name = 'MTNG'
 save_dir = Path(heft_dir) / sim_name
@@ -401,4 +398,4 @@ for i, field in enumerate(fields):
         count += 1
 
 plt.tight_layout()
-plt.savefig("../figures/comparison_MTNG_offset6.png")
+plt.savefig("../figures/comparison_MTNG_offset_z0.png")
