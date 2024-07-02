@@ -15,7 +15,7 @@ from abacusnbody.metadata import get_meta
 
 from asdf.exceptions import AsdfWarning
 warnings.filterwarnings('ignore', category=AsdfWarning)
-
+from nbodykit.lab import *
 # DEFAULTS = {'path2config': 'config/abacus_heft.yaml'}
 
 def compress_asdf(asdf_fn, table, header):
@@ -89,7 +89,7 @@ def load_velocities(z, path):
 
 def load_tau(z, path):
     """
-    Load velocities for the MillenniumTNG Simulation
+    Load gas field for the MillenniumTNG Simulation
     """
     if z==0.:
         string = '264'
@@ -103,6 +103,53 @@ def load_tau(z, path):
     result = np.load(path + 'tau_3d_snap_' + string + '.npy')
     return result
 
+def load_GroupPos(z, path):
+    """
+    Load Halo Group Positions for the MillenniumTNG Simulation
+    """
+    if z==0.:
+        string = '264'
+    elif z==0.5:
+        string = '214'
+    elif z==1.0:
+        string = '179'
+    else:
+        raise Exception("Redshift z is not one of the allowed values")
+    
+    result = np.load(path + 'GroupPos_fp_' + string + '.npy')
+    return result
+
+
+def load_GroupMass(z, path):
+    """
+    Load Halo Group Masses for the MillenniumTNG Simulation
+    """
+    if z==0.:
+        string = '264'
+    elif z==0.5:
+        string = '214'
+    elif z==1.0:
+        string = '179'
+    else:
+        raise Exception("Redshift z is not one of the allowed values")
+    
+    result = np.load(path + 'Group_M_TopHat200_fp_' + string + '.npy')
+    return result
+
+def make_cross_corr(field1, field2, Lbox=500, kmax=10):
+    mesh1 = ArrayMesh(field1, BoxSize=[Lbox]*3)
+    mesh2 = ArrayMesh(field2, BoxSize=[Lbox]*3)
+
+    r1 = FFTPower(mesh1, mode='1d', kmax=kmax)
+    r2 = FFTPower(mesh2, mode='1d', kmax=kmax)
+    cross = FFTPower(mesh1, second=mesh2, mode='1d', kmax=kmax)
+
+    kk = cross.power['k'][1:]
+    Pk1 = r1.power['power'].real[1:]
+    Pk2 = r2.power['power'].real[1:]
+    Pk_cross = cross.power['power'].real[1:]
+    r_cc = Pk_cross / np.sqrt(Pk1 * Pk2)
+    return kk, r_cc
 
 
 def gaussian_filter(field, nmesh, lbox, kcut):

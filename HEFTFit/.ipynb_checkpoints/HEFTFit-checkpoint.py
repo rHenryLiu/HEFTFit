@@ -98,10 +98,11 @@ class HEFTFit(object):
         else:
             self.pk_tau = pk
 
-        self.get_power_dict()
+        self.make_power_dict()
             
     
-    def fit(self, option, kmin=0.0, kmax=0.4, mumax=1.01, save=True, return_val=False, verbose=True):
+    def fit(self, option, kmin=0.0, kmax=0.4, mumax=1.01, save=True, return_val=False, 
+            verbose=True, nbins=21):
         '''
         Fit the 1cb, delta, delta^2, nabla^2 and tidal^2 fields to the Tau field,
         using one of four options:
@@ -216,7 +217,7 @@ class HEFTFit(object):
         elif option == 'field-level-scale':
             # Fits for scale-dependent bias
             # kbins = np.linspace(0., 1., 21) # best
-            kbins = np.linspace(kmin, kmax, 11) # best
+            kbins = np.linspace(kmin, kmax, nbins) # best
 
             operators = ["delta_dm_adv", "delta_dm_squared_adv", "s2_dm_adv", "nabla2_dm_adv"]
             for k in range(len(kbins)-1):
@@ -338,9 +339,9 @@ class HEFTFit(object):
             power_model += one_bias[i] * self.power_dict[f"delta_tau_obs_{field_i}"][((self.k_binc <= kmax) & (self.k_binc > kmin))[:, None] & (self.mu_binc < mumax)[None, :]].reshape(np.sum(((self.k_binc <= kmax) & (self.k_binc > kmin))), np.sum(self.mu_binc < mumax))
         return power_model
 
-    def get_power_dict(self):
+    def make_power_dict(self):
         '''
-        Gets the cross power spectra dictionary for the model.
+        Makes the cross power spectra dictionary for the model.
         '''
         
         power_dict = {}

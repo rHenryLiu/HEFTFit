@@ -33,11 +33,6 @@ heft_dir = '/pscratch/sd/r/rhliu/projects/heft_scratch/'
 nmesh = 1080
 kcut = 0.
 z_mock = 1.0 # config['sim_params']['z_mock']
-# z_mock = 1. # config['sim_params']['z_mock']
-
-sim_name = 'MTNG'
-save_dir = Path(heft_dir) / sim_name
-pcle_dir = save_dir / "pcles"
 
 paste = "TSC"
 pcle_type = "A"
@@ -48,7 +43,7 @@ Lbox = 500
 z_ic = 63.
 h = 67.76/100
 
-# Making growth factor for MTNG
+# Making growth factor for MTNG using CLASS
 print('Making growth factor for MTNG', time.time()-t0)
 cosmo = {}
 cosmo['output'] = 'mPk mTk'
@@ -78,9 +73,6 @@ print(str(adv_power_fn))
 
 # load fields
 
-# fields_fn = Path(save_dir) / f"fields_nmesh{nmesh:d}.asdf"
-# f = asdf.open(fields_fn, lazy_load=False)
-
 path = '/pscratch/sd/r/rhliu/projects/heft_scratch/MillenniumTNG_sims/'
 
 # Load Lagrangian Density first
@@ -109,18 +101,11 @@ table['delta2'] = d2
 table['nabla2'] = n2
 table['tidal2'] = s2
 
-# Now we calculate the advected fields:
-adv_fields = {}
-for field in factors_fields.keys():
-    adv_fields[field] = np.zeros((nmesh, nmesh, nmesh), dtype=np.float32)
-adv_fields['1cb'] = np.zeros((nmesh, nmesh, nmesh), dtype=np.float32)
-
-
-# load fields
+# Now we calculate the advected fields.
+# load our fields first
 print('Load Fields', time.time()-t0)
 
-# path = '/pscratch/sd/b/boryanah/for_henry/'
-# path = '/pscratch/sd/r/rhliu/projects/heft_scratch/MillenniumTNG_sims/'
+path = '/pscratch/sd/r/rhliu/projects/heft_scratch/MillenniumTNG_sims/'
 
 tau = load_tau(z_mock, path)
 lagr_pos = load_lagrangians(path=path)
@@ -128,14 +113,21 @@ pcle_pos = load_positions(z=z_mock, path=path)
 velocity = load_velocities(z=z_mock, path=path)
 
 # VERY IMPORTANT LINE: position offsets
-# Either do this for these fields or for the IC field (dens) above, better to do it above for dens I believe.
+# Either do this for these fields or for the IC field (dens) above, better to do 
+# it above for dens I believe.
 
 # lagr_pos[:, 0] -= Lbox/4
 # lagr_pos = lagr_pos % Lbox
 # pcle_pos[:, 0] -= Lbox/4
 # pcle_pos = pcle_pos % Lbox
 
+# Then calculate advected fields:
 print('Calculate Advected Fields', time.time()-t0)
+adv_fields = {}
+for field in factors_fields.keys():
+    adv_fields[field] = np.zeros((nmesh, nmesh, nmesh), dtype=np.float32)
+adv_fields['1cb'] = np.zeros((nmesh, nmesh, nmesh), dtype=np.float32)
+
 
 # lagr_ijk = ((lagr_pos+Lbox/2.)/(Lbox/nmesh)).astype(int)%nmesh # better than without L/2
 lagr_ijk = ((lagr_pos)/(Lbox/nmesh)).astype(int)%nmesh # better than without L/2
@@ -150,28 +142,7 @@ if paste == "TSC":
     tsc_parallel(pcle_pos, adv_fields['1cb'], Lbox, weights=None)
 
 
-header = {}
-header['sim_name'] = sim_name
-header['Lbox'] = Lbox
-header['pcle_type'] = pcle_type # could be A or B
-header['paste'] = paste
-header['nmesh'] = nmesh
-header['kcut'] = kcut
-# compress_asdf(str(adv_fields_fn), adv_fields, header)
-
-
-
 print('now for fitting tau', time.time()-t0)
-
-# Parameters
-# k_bin_edges = np.linspace(0.0, 1., 21) # best
-# k_bin_edges = np.linspace(1e-2, 10., 21) # best
-# k_binc = (k_bin_edges[1:]+k_bin_edges[:-1])*.5
-# mu_bin_edges = np.array([0, 1.])
-# mu_binc = (mu_bin_edges[1:]+mu_bin_edges[:-1])*.5
-sim_name = "MillenniumTNG"
-z_IC = z_ic
-
 
 # load advected
 # our advected fields - HL
@@ -182,7 +153,7 @@ delta_dm_squared_advected = adv_fields['delta2']
 s2_dm_advected = adv_fields['tidal2']
 nabla2_dm_advected = adv_fields['nabla2']
 
-delta_tau = tau/np.mean(tau) - 1 # Question: Is this advected?
+delta_tau = tau/np.mean(tau) - 1 # Question: Is this advected? A: No
 
 # normalize Question: Is everything normalized from before? I assume so
 # ones_dm_advected /= np.mean(ones_dm_advected, dtype=np.float64)

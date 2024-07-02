@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.fft import rfftn, irfftn, fftfreq, rfftfreq
 from scipy.optimize import minimize
+from scipy import interpolate
 import scipy as sp
 
 from classy import Class
@@ -24,15 +25,19 @@ from velocileptors.LPT.cleft_fftw import CLEFT
 sys.path.append('../') # Add the HEFTFit package
 from HEFTFit.field_utils import *
 from HEFTFit.HEFTFit import HEFTFit
-
+sys.path.append('../../transfer_fcn/scripts')
+from emulator_utils import *
+from nbodykit.lab import *
+import h5py
+import hdf5plugin
 
 t0 = time.time()
 # Configs
 print('Load Configs', time.time()-t0)
 heft_dir = '/pscratch/sd/r/rhliu/projects/heft_scratch/'
 nmesh = 1080
-kcut = 0.
-z_mock = 1.0 # config['sim_params']['z_mock']
+kcut = 0. # for linear power spectrum for velocileptors?
+z_mock = 0.0 # config['sim_params']['z_mock']
 
 paste = "TSC"
 pcle_type = "A"
@@ -62,14 +67,7 @@ pkclass.compute()
 
 D_mock = pkclass.scale_independent_growth_factor(z_mock)
 D_ic = pkclass.scale_independent_growth_factor(z_ic)
-D_ratio = D_mock/D_ic
-
-# file to save the advected fields
-adv_fields_fn = Path(save_dir) / f"adv_fields_nmesh{nmesh:d}.asdf"
-adv_power_fn = Path(save_dir) / f"adv_power_nmesh{nmesh:d}.asdf"
-print(str(adv_fields_fn))
-print(str(adv_power_fn))
-
+D_ratio = D_mock/D_ic # Growth ratio
 
 # load fields
 
@@ -171,36 +169,6 @@ delta_dm_squared_advected /= normalize_mean
 s2_dm_advected /= normalize_mean
 nabla2_dm_advected /= normalize_mean
 
-# fourier transform
-delta_tau_obs_fft = rfftn(delta_tau, workers=-1) / np.complex64(delta_tau.size)
-
-ones_dm_advected_fft = rfftn(ones_dm_advected, workers=-1) / np.complex64(ones_dm_advected.size)
-delta_dm_advected_fft = rfftn(delta_dm_advected, workers=-1) / np.complex64(delta_dm_advected.size)
-delta_dm_squared_advected_fft = rfftn(delta_dm_squared_advected, workers=-1) / np.complex64(delta_dm_squared_advected.size)
-s2_dm_advected_fft = rfftn(s2_dm_advected, workers=-1) / np.complex64(s2_dm_advected.size)
-nabla2_dm_advected_fft = rfftn(nabla2_dm_advected, workers=-1) / np.complex64(nabla2_dm_advected.size)
-
-# del delta_tau, ones_dm_advected, delta_dm_advected, delta_dm_squared_advected, s2_dm_advected, nabla2_dm_advected
-# gc.collect()
-
-# get auto-power spectrum
-# result = calc_pk_from_deltak(delta_tau_obs_fft, Lbox, k_bin_edges, mu_bin_edges)
-
-# pk = result['power']
-# Nmode = result['N_mode']
-# binned_poles = result['binned_poles']
-# N_mode_poles = result['N_mode_poles']
-# k_avg = result['k_avg']
-# #np.savez(f"data/power_21_obs_fft_snap{snap_int:d}.npz", pk=pk, k_bin_edges=k_bin_edges, Nmode=Nmode, k_avg=k_avg)
-
-# # just because I'm lazy and want to treat both options the same way
-# if len(mu_binc) == 1:
-#     pk_tau = np.atleast_2d(pk).T
-#     k_avg = np.atleast_2d(k_avg).T
-#     Nmode = np.atleast_2d(Nmode).T
-# else:
-#     pk_tau = pk
-
 # Initialize HEFTFit class
 
 Fit_fn = HEFTFit(ones_dm_advected, delta_dm_advected, delta_dm_squared_advected, 
@@ -219,90 +187,119 @@ print(dict_list[0].keys())
 
 k_avg = dict_list[0]['k_avg']
 pk_tau = Fit_fn.pk_tau
-# r_pk = dict_list[0]['r_pk']
-# r_pk_bk = dict_list[1]['r_pk']
-# r_pk_alt = dict_list[2]['r_pk']
-# r_pk_fit = dict_list[3]['r_pk']
 
-# pk_mod = dict_list[0]['pk_mod']
-# pk_mod_bk = dict_list[1]['pk_mod']
-# pk_mod_alt = dict_list[2]['pk_mod']
-# pk_mod_fit = dict_list[3]['pk_mod']
+################################################################################
 
-# pk_err = dict_list[0]['pk_err']
-# pk_err_bk = dict_list[1]['pk_err']
-# pk_err_alt = dict_list[2]['pk_err']
-# pk_err_fit = dict_list[3]['pk_err']
+print('Now for the Transfer Function Method', time.time()-t0)
 
-# relevant plots are everything except thermal - HL
+path_to_files = '/pscratch/sd/r/rhliu/projects/heft_transfer_fn/GP_test_outputs/'
+path_to_files = '/pscratch/sd/r/rhliu/projects/heft_transfer_fn/MillenniumTNG/GP_test_outputs/'
+sim_name1 = 'IllustrisTNG_g'
+sim_name2 = 'IllustrisTNG_m'
 
-# plt.figure(1, figsize=(9, 7))
-# plt.figure(2, figsize=(9, 7))
-# plt.figure(3, figsize=(9, 7))
-fig, ax = plt.subplots(1, 3, figsize=(20, 6))
-for i in range(1):
+save_path = '/pscratch/sd/r/rhliu/projects/heft_transfer_fn/'
 
-    # plt.figure(1)
-    ax0 = ax[0]
-    ax0.set_title(f"r_cc, z = {z_mock:.1f}")
-    for j, option in enumerate(options):
-        if option == 'power-spectrum':
-            continue
-        r_pk = dict_list[j]['r_pk']
-        ax0.plot(k_avg[:, i], r_pk[:, i], label=option)
-    # ax0.plot(k_avg[:, i], r_pk[:, i], label="field-level-brute")
-    # ax0.plot(k_avg[:, i], r_pk_bk[:, i], label="field-level-scale")
-    # ax0.plot(k_avg[:, i], r_pk_alt[:, i], label="field-level-matrix")
-    # plt.plot(k_avg[:, i], r_pk_fit[:, i], label="power-spectrum")
-    ax0.legend()
-    ax0.set_xscale('log')
-    ax0.set_xlabel('k')
-    ax0.set_ylabel('r(k)')
-    # plt.ylim([0, 1.0]) 
+GaussianProcess = np.load(path_to_files + 'GP_post_fit_MillenniumTNG_singlefield_LH_1080_0.00_0.npy')
+k_TNG, PkRatios_TNG = getPkRatios('IllustrisTNG', 'g', 'c', '0.00')
+# Create a boolean mask for k values <= 10
+mask_TNG = k_TNG[0] <= 10
+# Apply the mask to filter k values and P(k) values
+filtered_k_TNG = k_TNG[:, mask_TNG]
+filtered_PkRatios_ITNG = PkRatios_TNG[:, mask_TNG]
+filtered_k = filtered_k_TNG[0]
 
-    # plt.figure(2)
-    ax1 = ax[1]
-    ax1.set_title(f"Power Spectrum, z = {z_mock:.1f}")
-    for j, option in enumerate(options):
-        pk_mod = dict_list[j]['pk_mod']
-        ax1.plot(k_avg[:, i], pk_mod[:, i]*k_avg[:, i]**3/2./np.pi**2, label=option)
+density_z0 = np.load(path + 'density_mesh__264_MTNG-L500-1080.npy')
+print(np.sum(np.abs(density_z0 - ones_dm_advected)))
 
-    # ax1.plot(k_avg[:, i], pk_mod[:, i]*k_avg[:, i]**3/2./np.pi**2, label="field-level-brute")
-    # ax1.plot(k_avg[:, i], pk_mod_bk[:, i]*k_avg[:, i]**3/2./np.pi**2, label="field-level-scale")
-    # ax1.plot(k_avg[:, i], pk_mod_alt[:, i]*k_avg[:, i]**3/2./np.pi**2, label="field-level-matrix")
-    # ax1.plot(k_avg[:, i], pk_mod_fit[:, i]*k_avg[:, i]**3/2./np.pi**2, label="power-spectrum")
-    ax1.errorbar(k_avg[:, i], pk_tau[:, i]*k_avg[:, i]**3/2./np.pi**2, yerr=np.sqrt(2./Fit_fn.Nmode[:, i])*pk_tau[:, i]*k_avg[:, i]**3/2./np.pi**2, capsize=4, label="Tau")
-    ax1.legend()
-    ax1.set_xscale('log')
-    ax1.set_yscale('log')
-    ax1.set_xlabel('k')
-    ax1.set_ylabel('P(k)')
+# mesh = ArrayMesh(density_z0, BoxSize=[500]*3)
+mesh = ArrayMesh(ones_dm_advected, BoxSize=[500]*3)
+delta_tau_mesh = ArrayMesh(delta_tau, BoxSize=[500]*3)
 
-    # plt.figure(3)
-    ax2 = ax[2]
-    ax2.set_title(f"Pk error ratio, z = {z_mock:.1f}")
-    for j, option in enumerate(options):
-        pk_err = dict_list[j]['pk_err']
-        ax2.plot(k_avg[:, i], np.abs(pk_err/pk_tau)[:, i], label=option)
-        
-    # ax2.plot(k_avg[:, i], np.abs(pk_err/pk_tau)[:, i], label="field-level-brute")
-    # ax2.plot(k_avg[:, i], np.abs(pk_err_bk/pk_tau)[:, i], label="field-level-scale")
-    # ax2.plot(k_avg[:, i], np.abs(pk_err_alt/pk_tau)[:, i], label="field-level-matrix")
-    # ax2.plot(k_avg[:, i], np.abs(pk_err_fit/pk_tau)[:, i], label="power-spectrum")
-    ax2.legend()
-    ax2.set_xscale('log')
-    ax2.set_yscale('log')
-    ax2.set_xlabel('k')
-    # plt.ylim([0, 0.5]) 
-    ax2.set_ylabel('P_err(k)/P_tau(k)')
+# r1 = FFTPower(mesh, mode='1d', kmax=10)
+# Pk1 = r1.power['power'].real[1:]
+# r2 = FFTPower(mesh2, mode='1d', kmax=10)
+# Pk2 = r2.power['power'].real[1:]
+# k = r2.power['k'][1:]
 
-# plt.figure(1)
-# plt.savefig("../figures/cross_corr_test.png")
-# plt.close()
-# plt.figure(2)
-# plt.savefig("../figures/power_tau_test.png")
-# plt.close()
-# plt.figure(3)
-plt.tight_layout()
-plt.savefig("../figures/output_plots_z_" + str(z_mock) + "_2.png")
+median_Tk = np.sqrt(GaussianProcess)
+kk = filtered_k_TNG[0]
+transfer_fn = interpolate.interp1d(kk, median_Tk, bounds_error=False, fill_value='extrapolate')
+def transfer(k, v):
+    # print(k)
+    kk = np.sqrt(sum(ki ** 2 for ki in k))
+    tt = transfer_fn(kk)
+    return v * tt
+field_dm = mesh.to_field(mode='complex')
+transfer_field_g = field_dm.apply(transfer)
+delta_g = transfer_field_g.c2r()
+
+P_g1 = FFTPower(delta_tau_mesh, mode='1d', kmax=10)
+P_g2 = FFTPower(delta_g, mode='1d', kmax=10)
+P_cross = FFTPower(delta_g, second=delta_tau_mesh, mode='1d', kmax=10)
+
+Pk_g1 = P_g1.power['power'].real[1:]
+Pk_g2 = P_g2.power['power'].real[1:]
+Pk_cross = P_cross.power['power'].real[1:]
+k = P_cross.power['k'][1:]
+
+cross_corr = P_cross.power['power'].real[1:] /np.sqrt(P_g1.power['power'].real[1:]*P_g2.power['power'].real[1:])
+
+################################################################################
+
+fig = plt.figure(figsize=(8,8))
+
+plt.title(f"r_cc, z = {z_mock:.1f}")
+for j, option in enumerate(options):
+    if option == 'power-spectrum':
+        continue
+    r_pk = dict_list[j]['r_pk']
+    plt.plot(k_avg[:, 0], r_pk[:, 0], label=option)
+# ax0.plot(k_avg[:, i], r_pk[:, i], label="field-level-brute")
+# ax0.plot(k_avg[:, i], r_pk_bk[:, i], label="field-level-scale")
+# ax0.plot(k_avg[:, i], r_pk_alt[:, i], label="field-level-matrix")
+# plt.plot(k_avg[:, i], r_pk_fit[:, i], label="power-spectrum")
+plt.plot(k, cross_corr, label='transfer_function EPT')
+plt.legend()
+plt.xscale('log')
+plt.xlabel('k')
+plt.ylabel('r(k)')
+plt.savefig("../HEFTFit/figures/r_cc_compare_z_" + str(z_mock) + ".png")
 plt.close()
+
+################################################################################
+# Now for cross correlations with Group Haloes
+print('Plot Cross Correlations', time.time() - t0)
+path_halo = '/pscratch/sd/r/rhliu/projects/heft_scratch/MTNG_haloes/'
+
+GroupPos = load_GroupPos(z_mock, path_halo)
+GroupMass = load_GroupMass(z_mock, path_halo) * 1e10
+
+field_halo = tsc_parallel(GroupPos, (nmesh, nmesh, nmesh), Lbox, weights=GroupMass)
+print(np.mean(field_halo))
+field_halo = field_halo / np.mean(field_halo) - 1
+
+matrix_bias = dict_list[1]['one_bias']
+field_LPT = Fit_fn.get_field(matrix_bias)
+print(np.mean(field_LPT))
+# field_LPT = field_LPT/np.mean(field_LPT) - 1
+
+field_EPT = np.array(delta_g)
+print(np.mean(field_EPT))
+# field_EPT = field_EPT/np.mean(field_EPT) - 1
+
+field_tau = delta_tau.copy()
+
+kk, r_LPT = make_cross_corr(field_halo, field_LPT)
+kk, r_EPT = make_cross_corr(field_halo, field_EPT)
+kk, r_true = make_cross_corr(field_halo, field_tau)
+
+fig = plt.figure(figsize=(8,8))
+plt.plot(kk, r_LPT, label='r_cc for Halos and LPT reconstructed tau Field')
+plt.plot(kk, r_EPT, label='r_cc for Halos and EPT reconstructed tau Field')
+plt.plot(kk, r_true, label='r_cc for Halos and true tau Field')
+plt.xscale('log')
+plt.legend()
+plt.savefig("../figures/Halo_r_cc_compare_z_" + str(z_mock) + ".png")
+# plt.savefig('../figures/Halo_r_cc.png', dpi=100)
+
+print('Done!!! Total runtime:', time.time()-t0)
