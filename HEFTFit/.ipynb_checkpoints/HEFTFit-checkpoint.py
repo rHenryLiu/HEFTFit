@@ -37,10 +37,18 @@ from velocileptors.LPT.cleft_fftw import CLEFT
 
 class HEFTFit(object):
     def __init__(self, ones_dm_adv, delta_dm_adv, delta_dm_squared_adv, 
-                  s2_dm_adv, nabla2_dm_adv, delta_tau, Lbox, nmesh, ):
+                 s2_dm_adv, nabla2_dm_adv, delta_tau, Lbox, nmesh, kmin=1e-2, 
+                 kmax=10, logscale=True, npoints=21):
         
         self.Lbox = Lbox
         self.nmesh = nmesh
+        
+        self.delta_tau = delta_tau
+        self.ones_dm_adv = ones_dm_adv
+        self.delta_dm_adv = delta_dm_adv
+        self.delta_dm_squared_adv = delta_dm_squared_adv
+        self.s2_dm_adv = s2_dm_adv
+        self.nabla2_dm_adv = nabla2_dm_adv
         
         self.delta_tau_obs_fft = (rfftn(delta_tau, workers=-1) 
                                   / np.complex64(delta_tau.size))
@@ -58,7 +66,13 @@ class HEFTFit(object):
                                   / np.complex64(nabla2_dm_adv.size))
         
         
-        self.k_bin_edges = np.linspace(1e-2, 1., 21) # best
+        if logscale:
+            low = np.log10(kmin)
+            high = np.log10(kmax)
+            self.k_bin_edges = np.logspace(low, high, npoints) # best
+        else:
+            self.k_bin_edges = np.linspace(kmin, kmax, npoints) # best
+            
         self.k_binc = (self.k_bin_edges[1:]+self.k_bin_edges[:-1])*.5
         self.mu_bin_edges = np.array([0, 1.])
         self.mu_binc = (self.mu_bin_edges[1:]+self.mu_bin_edges[:-1])*.5
@@ -73,14 +87,14 @@ class HEFTFit(object):
         result = calc_pk_from_deltak(self.delta_tau_obs_fft, self.Lbox, self.k_bin_edges, self.mu_bin_edges)
 
         pk = result['power']
-        Nmode = result['N_mode']
+        self.Nmode = result['N_mode']
         binned_poles = result['binned_poles']
         N_mode_poles = result['N_mode_poles']
-        k_avg = result['k_avg']
+        self.k_avg = result['k_avg']
         if len(self.mu_binc) == 1:
             self.pk_tau = np.atleast_2d(pk).T
-            self.k_avg = np.atleast_2d(k_avg).T
-            self.Nmode = np.atleast_2d(Nmode).T
+            self.k_avg = np.atleast_2d(self.k_avg).T
+            self.Nmode = np.atleast_2d(self.Nmode).T
         else:
             self.pk_tau = pk
 
@@ -202,7 +216,7 @@ class HEFTFit(object):
         elif option == 'field-level-scale':
             # Fits for scale-dependent bias
             # kbins = np.linspace(0., 1., 21) # best
-            kbins = np.linspace(kmin, kmax, 21) # best
+            kbins = np.linspace(kmin, kmax, 11) # best
 
             operators = ["delta_dm_adv", "delta_dm_squared_adv", "s2_dm_adv", "nabla2_dm_adv"]
             for k in range(len(kbins)-1):
@@ -363,3 +377,21 @@ class HEFTFit(object):
                 power_dict[f"{field_i}_{field_j}"] = power_dict[f"{field_j}_{field_i}"] = pk
 
         self.power_dict = power_dict
+        
+    def get_field(self, bias, scale=False):
+        '''
+        Returns the tau field using the saved fields and the bias input. Tau field
+        returns as a np array.
+        bias is the ones_bias parameter from before. 
+        '''
+        
+        if scale:
+            print('TODO: have not coded yet')
+            return
+        
+        else:
+            delta_tau_fit_fft = (bias[0] * self.ones_dm_adv_fft + bias[1] * self.delta_dm_adv_fft 
+                                 + bias[2] * self.delta_dm_squared_adv_fft + bias[3] * self.s2_dm_adv_fft
+                                 + bias[4] * self.nabla2_dm_adv_fft)
+            delta_tau_fit = irfftn(delta_tau_fit_fft * np.complex64(self.ones_dm_adv.size))
+            return delta_tau_fit

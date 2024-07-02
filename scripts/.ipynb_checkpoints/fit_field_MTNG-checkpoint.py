@@ -1,17 +1,11 @@
 import argparse
-import gc
-import os
 from pathlib import Path
 import warnings
 import time
-import sys
 
 import sys
-import asdf
 import numpy as np
 import matplotlib.pyplot as plt
-import yaml
-import numba
 from scipy.fft import rfftn, irfftn, fftfreq, rfftfreq
 from scipy.optimize import minimize
 import scipy as sp
@@ -24,9 +18,6 @@ from abacusnbody.analysis.power_spectrum import calc_pk_from_deltak #computes po
 # from abacusnbody.analysis.power_spectrum import index_3d_rfft
 
 # from obtain_IC_fields import *
-
-from asdf.exceptions import AsdfWarning
-warnings.filterwarnings('ignore', category=AsdfWarning)
 
 sys.path.append('../velocileptors') # clone the velocileptors from github 
 from velocileptors.LPT.cleft_fftw import CLEFT
@@ -41,7 +32,7 @@ print('Load Configs', time.time()-t0)
 heft_dir = '/pscratch/sd/r/rhliu/projects/heft_scratch/'
 nmesh = 1080
 kcut = 0.
-z_mock = 0. # config['sim_params']['z_mock']
+z_mock = 1.0 # config['sim_params']['z_mock']
 # z_mock = 1. # config['sim_params']['z_mock']
 
 sim_name = 'MTNG'
@@ -92,9 +83,8 @@ print(str(adv_power_fn))
 
 path = '/pscratch/sd/r/rhliu/projects/heft_scratch/MillenniumTNG_sims/'
 
+# Load Lagrangian Density first
 dens = np.load(path + 'density_ngenic.npy')
-# tau = np.load(path + 'tau_3d_snap_264.npy')
-tau = load_tau(z_mock, path)
 
 # Create offset for the density mesh (Important)
 print('Create offset for the density mesh')
@@ -132,6 +122,7 @@ print('Load Fields', time.time()-t0)
 # path = '/pscratch/sd/b/boryanah/for_henry/'
 # path = '/pscratch/sd/r/rhliu/projects/heft_scratch/MillenniumTNG_sims/'
 
+tau = load_tau(z_mock, path)
 lagr_pos = load_lagrangians(path=path)
 pcle_pos = load_positions(z=z_mock, path=path)
 velocity = load_velocities(z=z_mock, path=path)
@@ -174,10 +165,10 @@ print('now for fitting tau', time.time()-t0)
 
 # Parameters
 # k_bin_edges = np.linspace(0.0, 1., 21) # best
-k_bin_edges = np.linspace(1e-2, 10., 21) # best
-k_binc = (k_bin_edges[1:]+k_bin_edges[:-1])*.5
-mu_bin_edges = np.array([0, 1.])
-mu_binc = (mu_bin_edges[1:]+mu_bin_edges[:-1])*.5
+# k_bin_edges = np.linspace(1e-2, 10., 21) # best
+# k_binc = (k_bin_edges[1:]+k_bin_edges[:-1])*.5
+# mu_bin_edges = np.array([0, 1.])
+# mu_binc = (mu_bin_edges[1:]+mu_bin_edges[:-1])*.5
 sim_name = "MillenniumTNG"
 z_IC = z_ic
 
@@ -222,136 +213,125 @@ nabla2_dm_advected_fft = rfftn(nabla2_dm_advected, workers=-1) / np.complex64(na
 # gc.collect()
 
 # get auto-power spectrum
-result = calc_pk_from_deltak(delta_tau_obs_fft, Lbox, k_bin_edges, mu_bin_edges)
+# result = calc_pk_from_deltak(delta_tau_obs_fft, Lbox, k_bin_edges, mu_bin_edges)
 
-pk = result['power']
-Nmode = result['N_mode']
-binned_poles = result['binned_poles']
-N_mode_poles = result['N_mode_poles']
-k_avg = result['k_avg']
-#np.savez(f"data/power_21_obs_fft_snap{snap_int:d}.npz", pk=pk, k_bin_edges=k_bin_edges, Nmode=Nmode, k_avg=k_avg)
+# pk = result['power']
+# Nmode = result['N_mode']
+# binned_poles = result['binned_poles']
+# N_mode_poles = result['N_mode_poles']
+# k_avg = result['k_avg']
+# #np.savez(f"data/power_21_obs_fft_snap{snap_int:d}.npz", pk=pk, k_bin_edges=k_bin_edges, Nmode=Nmode, k_avg=k_avg)
 
-# just because I'm lazy and want to treat both options the same way
-if len(mu_binc) == 1:
-    pk_tau = np.atleast_2d(pk).T
-    k_avg = np.atleast_2d(k_avg).T
-    Nmode = np.atleast_2d(Nmode).T
-else:
-    pk_tau = pk
+# # just because I'm lazy and want to treat both options the same way
+# if len(mu_binc) == 1:
+#     pk_tau = np.atleast_2d(pk).T
+#     k_avg = np.atleast_2d(k_avg).T
+#     Nmode = np.atleast_2d(Nmode).T
+# else:
+#     pk_tau = pk
 
-# get cross-power spectra
-power_dict = {}
-fields = ["ones_dm_advected", "delta_dm_advected", "delta_dm_squared_advected", "s2_dm_advected", "nabla2_dm_advected"]
-for i, field_i in enumerate(fields):
-    result = calc_pk_from_deltak(delta_tau_obs_fft, Lbox, k_bin_edges, mu_bin_edges, field2_fft=locals()[f"{field_i}_fft"])
-
-    pk = result['power']
-    Nmode = result['N_mode']
-    binned_poles = result['binned_poles']
-    N_mode_poles = result['N_mode_poles']
-    k_avg = result['k_avg']   
-    if len(mu_binc) == 1:
-        pk = np.atleast_2d(pk).T
-        k_avg = np.atleast_2d(k_avg).T
-        Nmode = np.atleast_2d(Nmode).T
-    power_dict[f"delta_tau_obs_{field_i}"] = pk
-    
-    for j, field_j in enumerate(fields):
-        if i < j: continue
-        result = calc_pk_from_deltak(locals()[f"{field_i}_fft"], Lbox, k_bin_edges, mu_bin_edges, field2_fft=locals()[f"{field_j}_fft"])
-
-        pk = result['power']
-        Nmode = result['N_mode']
-        binned_poles = result['binned_poles']
-        N_mode_poles = result['N_mode_poles']
-        k_avg = result['k_avg']
-        if len(mu_binc) == 1:
-            pk = np.atleast_2d(pk).T
-            k_avg = np.atleast_2d(k_avg).T
-            Nmode = np.atleast_2d(Nmode).T
-        power_dict[f"{field_i}_{field_j}"] = power_dict[f"{field_j}_{field_i}"] = pk
-#np.savez(f"data/power_dict_snap{snap_int:d}.npz", power_dict=power_dict, k_bin_edges=k_bin_edges, mu_bin_edges=mu_bin_edges, Nmode=Nmode, k_avg=k_avg)
-
+# Initialize HEFTFit class
 
 Fit_fn = HEFTFit(ones_dm_advected, delta_dm_advected, delta_dm_squared_advected, 
                  s2_dm_advected, nabla2_dm_advected, delta_tau, Lbox=500, nmesh=1080)
 
 dict_list = []
-for options in ['field-level-brute', 'field-level-scale', 'field-level-matrix', 'power-spectrum']:
+options = ['field-level-brute', 'field-level-scale', 'field-level-matrix', 'power-spectrum']
+options = ['field-level-scale', 'field-level-matrix', 'power-spectrum']
+for option in options:
     
-    # print(options)
-    dict_i = Fit_fn.fit(options, kmax=1.0, save=False, return_val=True)
+    # print(option)
+    dict_i = Fit_fn.fit(option, kmax=10.0, save=False, return_val=True)
     dict_list.append(dict_i)
 
 print(dict_list[0].keys())
 
-r_pk = dict_list[0]['r_pk']
-r_pk_bk = dict_list[1]['r_pk']
-r_pk_alt = dict_list[2]['r_pk']
-r_pk_fit = dict_list[3]['r_pk']
-
-pk_mod = dict_list[0]['pk_mod']
-pk_mod_bk = dict_list[1]['pk_mod']
-pk_mod_alt = dict_list[2]['pk_mod']
-pk_mod_fit = dict_list[3]['pk_mod']
+k_avg = dict_list[0]['k_avg']
 pk_tau = Fit_fn.pk_tau
+# r_pk = dict_list[0]['r_pk']
+# r_pk_bk = dict_list[1]['r_pk']
+# r_pk_alt = dict_list[2]['r_pk']
+# r_pk_fit = dict_list[3]['r_pk']
 
-pk_err = dict_list[0]['pk_err']
-pk_err_bk = dict_list[1]['pk_err']
-pk_err_alt = dict_list[2]['pk_err']
-pk_err_fit = dict_list[3]['pk_err']
+# pk_mod = dict_list[0]['pk_mod']
+# pk_mod_bk = dict_list[1]['pk_mod']
+# pk_mod_alt = dict_list[2]['pk_mod']
+# pk_mod_fit = dict_list[3]['pk_mod']
+
+# pk_err = dict_list[0]['pk_err']
+# pk_err_bk = dict_list[1]['pk_err']
+# pk_err_alt = dict_list[2]['pk_err']
+# pk_err_fit = dict_list[3]['pk_err']
 
 # relevant plots are everything except thermal - HL
 
-plt.figure(1, figsize=(9, 7))
-plt.figure(2, figsize=(9, 7))
-plt.figure(3, figsize=(9, 7))
+# plt.figure(1, figsize=(9, 7))
+# plt.figure(2, figsize=(9, 7))
+# plt.figure(3, figsize=(9, 7))
+fig, ax = plt.subplots(1, 3, figsize=(20, 6))
 for i in range(1):
 
-    plt.figure(1)
-    plt.title(f"r_cc, z = {z_mock:.1f}")
-    plt.plot(k_avg[:, i], r_pk[:, i], label="field-level-brute")
-    plt.plot(k_avg[:, i], r_pk_bk[:, i], label="field-level-scale")
-    plt.plot(k_avg[:, i], r_pk_alt[:, i], label="field-level-matrix")
+    # plt.figure(1)
+    ax0 = ax[0]
+    ax0.set_title(f"r_cc, z = {z_mock:.1f}")
+    for j, option in enumerate(options):
+        if option == 'power-spectrum':
+            continue
+        r_pk = dict_list[j]['r_pk']
+        ax0.plot(k_avg[:, i], r_pk[:, i], label=option)
+    # ax0.plot(k_avg[:, i], r_pk[:, i], label="field-level-brute")
+    # ax0.plot(k_avg[:, i], r_pk_bk[:, i], label="field-level-scale")
+    # ax0.plot(k_avg[:, i], r_pk_alt[:, i], label="field-level-matrix")
     # plt.plot(k_avg[:, i], r_pk_fit[:, i], label="power-spectrum")
-    plt.legend()
-    plt.xscale('log')
-    plt.xlabel('k')
-    plt.ylabel('r(k)')
+    ax0.legend()
+    ax0.set_xscale('log')
+    ax0.set_xlabel('k')
+    ax0.set_ylabel('r(k)')
     # plt.ylim([0, 1.0]) 
 
-    plt.figure(2)
-    plt.title(f"Power Spectrum, z = {z_mock:.1f}")
-    plt.plot(k_avg[:, i], pk_mod[:, i]*k_avg[:, i]**3/2./np.pi**2, label="field-level-brute")
-    plt.plot(k_avg[:, i], pk_mod_bk[:, i]*k_avg[:, i]**3/2./np.pi**2, label="field-level-scale")
-    plt.plot(k_avg[:, i], pk_mod_alt[:, i]*k_avg[:, i]**3/2./np.pi**2, label="field-level-matrix")
-    plt.plot(k_avg[:, i], pk_mod_fit[:, i]*k_avg[:, i]**3/2./np.pi**2, label="power-spectrum")
-    plt.errorbar(k_avg[:, i], pk_tau[:, i]*k_avg[:, i]**3/2./np.pi**2, yerr=np.sqrt(2./Nmode[:, i])*pk_tau[:, i]*k_avg[:, i]**3/2./np.pi**2, capsize=4, label="Tau")
-    plt.legend()
-    plt.xscale('log')
-    plt.yscale('log')
-    plt.xlabel('k')
-    plt.ylabel('P(k)')
+    # plt.figure(2)
+    ax1 = ax[1]
+    ax1.set_title(f"Power Spectrum, z = {z_mock:.1f}")
+    for j, option in enumerate(options):
+        pk_mod = dict_list[j]['pk_mod']
+        ax1.plot(k_avg[:, i], pk_mod[:, i]*k_avg[:, i]**3/2./np.pi**2, label=option)
 
-    plt.figure(3)
-    plt.title(f"Pk error ratio, z = {z_mock:.1f}")
-    plt.plot(k_avg[:, i], np.abs(pk_err/pk_tau)[:, i], label="field-level-brute")
-    plt.plot(k_avg[:, i], np.abs(pk_err_bk/pk_tau)[:, i], label="field-level-scale")
-    plt.plot(k_avg[:, i], np.abs(pk_err_alt/pk_tau)[:, i], label="field-level-matrix")
-    plt.plot(k_avg[:, i], np.abs(pk_err_fit/pk_tau)[:, i], label="power-spectrum")
-    plt.legend()
-    plt.xscale('log')
-    plt.yscale('log')
-    plt.xlabel('k')
+    # ax1.plot(k_avg[:, i], pk_mod[:, i]*k_avg[:, i]**3/2./np.pi**2, label="field-level-brute")
+    # ax1.plot(k_avg[:, i], pk_mod_bk[:, i]*k_avg[:, i]**3/2./np.pi**2, label="field-level-scale")
+    # ax1.plot(k_avg[:, i], pk_mod_alt[:, i]*k_avg[:, i]**3/2./np.pi**2, label="field-level-matrix")
+    # ax1.plot(k_avg[:, i], pk_mod_fit[:, i]*k_avg[:, i]**3/2./np.pi**2, label="power-spectrum")
+    ax1.errorbar(k_avg[:, i], pk_tau[:, i]*k_avg[:, i]**3/2./np.pi**2, yerr=np.sqrt(2./Fit_fn.Nmode[:, i])*pk_tau[:, i]*k_avg[:, i]**3/2./np.pi**2, capsize=4, label="Tau")
+    ax1.legend()
+    ax1.set_xscale('log')
+    ax1.set_yscale('log')
+    ax1.set_xlabel('k')
+    ax1.set_ylabel('P(k)')
+
+    # plt.figure(3)
+    ax2 = ax[2]
+    ax2.set_title(f"Pk error ratio, z = {z_mock:.1f}")
+    for j, option in enumerate(options):
+        pk_err = dict_list[j]['pk_err']
+        ax2.plot(k_avg[:, i], np.abs(pk_err/pk_tau)[:, i], label=option)
+        
+    # ax2.plot(k_avg[:, i], np.abs(pk_err/pk_tau)[:, i], label="field-level-brute")
+    # ax2.plot(k_avg[:, i], np.abs(pk_err_bk/pk_tau)[:, i], label="field-level-scale")
+    # ax2.plot(k_avg[:, i], np.abs(pk_err_alt/pk_tau)[:, i], label="field-level-matrix")
+    # ax2.plot(k_avg[:, i], np.abs(pk_err_fit/pk_tau)[:, i], label="power-spectrum")
+    ax2.legend()
+    ax2.set_xscale('log')
+    ax2.set_yscale('log')
+    ax2.set_xlabel('k')
     # plt.ylim([0, 0.5]) 
-    plt.ylabel('P_err(k)/P_tau(k)')
+    ax2.set_ylabel('P_err(k)/P_tau(k)')
 
-plt.figure(1)
-plt.savefig("../figures/cross_corr_z0.png")
-plt.close()
-plt.figure(2)
-plt.savefig("../figures/power_tau_z0.png")
-plt.close()
-plt.figure(3)
-plt.savefig("../figures/error_ratio_z0.png")
+# plt.figure(1)
+# plt.savefig("../figures/cross_corr_test.png")
+# plt.close()
+# plt.figure(2)
+# plt.savefig("../figures/power_tau_test.png")
+# plt.close()
+# plt.figure(3)
+plt.tight_layout()
+plt.savefig("../figures/output_plots_z_" + str(z_mock) + "_2.png")
 plt.close()
