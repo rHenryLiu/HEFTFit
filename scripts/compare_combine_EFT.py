@@ -172,7 +172,7 @@ nabla2_dm_advected /= normalize_mean
 # Initialize HEFTFit class
 
 Fit_fn = HEFTFit(ones_dm_advected, delta_dm_advected, delta_dm_squared_advected, 
-                 s2_dm_advected, nabla2_dm_advected, delta_tau, Lbox=500, nmesh=1080)
+                 s2_dm_advected, nabla2_dm_advected, delta_tau, Lbox=Lbox, nmesh=nmesh, npoints=101, logscale=False)
 
 dict_list = []
 options = ['field-level-brute', 'field-level-scale', 'field-level-matrix', 'power-spectrum']
@@ -180,7 +180,7 @@ options = ['field-level-scale', 'field-level-matrix', 'power-spectrum']
 for option in options:
     
     # print(option)
-    dict_i = Fit_fn.fit(option, kmax=10.0, save=False, return_val=True)
+    dict_i = Fit_fn.fit(option, kmax=10.0, save=False, return_val=True, nbins=41)
     dict_list.append(dict_i)
 
 print(dict_list[0].keys())
@@ -263,7 +263,7 @@ plt.legend()
 plt.xscale('log')
 plt.xlabel('k')
 plt.ylabel('r(k)')
-plt.savefig("../HEFTFit/figures/r_cc_compare_z_" + str(z_mock) + ".png")
+plt.savefig("../figures/r_cc_compare_z_" + str(z_mock) + "_3.png")
 plt.close()
 
 ################################################################################
@@ -299,7 +299,7 @@ plt.plot(kk, r_EPT, label='r_cc for Halos and EPT reconstructed tau Field')
 plt.plot(kk, r_true, label='r_cc for Halos and true tau Field')
 plt.xscale('log')
 plt.legend()
-plt.savefig("../figures/Halo_r_cc_compare_z_" + str(z_mock) + ".png")
+plt.savefig("../figures/Halo_r_cc_compare_z_" + str(z_mock) + "_3.png")
 # plt.savefig('../figures/Halo_r_cc.png', dpi=100)
 
 print('Done!!! Total runtime:', time.time()-t0)

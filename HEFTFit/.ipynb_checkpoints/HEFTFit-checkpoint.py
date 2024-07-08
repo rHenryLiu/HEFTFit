@@ -38,7 +38,7 @@ from velocileptors.LPT.cleft_fftw import CLEFT
 class HEFTFit(object):
     def __init__(self, ones_dm_adv, delta_dm_adv, delta_dm_squared_adv, 
                  s2_dm_adv, nabla2_dm_adv, delta_tau, Lbox, nmesh, kmin=1e-2, 
-                 kmax=10, logscale=True, npoints=21):
+                 kmax=10, logscale=False, npoints=21):
         
         self.Lbox = Lbox
         self.nmesh = nmesh

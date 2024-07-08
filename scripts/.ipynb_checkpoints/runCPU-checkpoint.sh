@@ -16,4 +16,4 @@ module unload desiutil
 module load desiutil/3.2.6
 
 echo "fit_field_MTNG.py"
-srun python -u fit_field_MTNG.py
+srun python -u compare_combine_EFT.py
