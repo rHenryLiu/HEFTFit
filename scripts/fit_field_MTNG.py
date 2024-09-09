@@ -65,10 +65,10 @@ D_ic = pkclass.scale_independent_growth_factor(z_ic)
 D_ratio = D_mock/D_ic
 
 # file to save the advected fields
-adv_fields_fn = Path(save_dir) / f"adv_fields_nmesh{nmesh:d}.asdf"
-adv_power_fn = Path(save_dir) / f"adv_power_nmesh{nmesh:d}.asdf"
-print(str(adv_fields_fn))
-print(str(adv_power_fn))
+# adv_fields_fn = Path(save_dir) / f"adv_fields_nmesh{nmesh:d}.asdf"
+# adv_power_fn = Path(save_dir) / f"adv_power_nmesh{nmesh:d}.asdf"
+# print(str(adv_fields_fn))
+# print(str(adv_power_fn))
 
 
 # load fields
@@ -204,7 +204,8 @@ nabla2_dm_advected_fft = rfftn(nabla2_dm_advected, workers=-1) / np.complex64(na
 # Initialize HEFTFit class
 
 Fit_fn = HEFTFit(ones_dm_advected, delta_dm_advected, delta_dm_squared_advected, 
-                 s2_dm_advected, nabla2_dm_advected, delta_tau, Lbox=500, nmesh=1080)
+                 s2_dm_advected, nabla2_dm_advected, delta_tau, Lbox=500, 
+                 nmesh=1080, logscale=True)
 
 dict_list = []
 options = ['field-level-brute', 'field-level-scale', 'field-level-matrix', 'power-spectrum']
@@ -236,6 +237,16 @@ pk_tau = Fit_fn.pk_tau
 
 # relevant plots are everything except thermal - HL
 
+# get cross power with DM
+result = calc_pk_from_deltak(Fit_fn.delta_tau_obs_fft, Fit_fn.Lbox, Fit_fn.k_bin_edges, Fit_fn.mu_bin_edges, field2_fft=Fit_fn.ones_dm_adv_fft)
+pk = result['power']
+# Nmode = result['N_mode']
+# binned_poles = result['binned_poles']
+# N_mode_poles = result['N_mode_poles']
+k_avg2 = result['k_avg']
+pk_dm = calc_pk_from_deltak(Fit_fn.ones_dm_adv_fft, Fit_fn.Lbox, Fit_fn.k_bin_edges, Fit_fn.mu_bin_edges)
+r_pk2 = pk/(np.sqrt(Fit_fn.pk_tau*pk_dm)) # cross corr coeff - HL
+
 # plt.figure(1, figsize=(9, 7))
 # plt.figure(2, figsize=(9, 7))
 # plt.figure(3, figsize=(9, 7))
@@ -245,6 +256,7 @@ for i in range(1):
     # plt.figure(1)
     ax0 = ax[0]
     ax0.set_title(f"r_cc, z = {z_mock:.1f}")
+    ax0.plot(k_avg2, r_pk2[:, i], label='DM')
     for j, option in enumerate(options):
         if option == 'power-spectrum':
             continue
@@ -272,6 +284,8 @@ for i in range(1):
     # ax1.plot(k_avg[:, i], pk_mod_alt[:, i]*k_avg[:, i]**3/2./np.pi**2, label="field-level-matrix")
     # ax1.plot(k_avg[:, i], pk_mod_fit[:, i]*k_avg[:, i]**3/2./np.pi**2, label="power-spectrum")
     ax1.errorbar(k_avg[:, i], pk_tau[:, i]*k_avg[:, i]**3/2./np.pi**2, yerr=np.sqrt(2./Fit_fn.Nmode[:, i])*pk_tau[:, i]*k_avg[:, i]**3/2./np.pi**2, capsize=4, label="Tau")
+    pk_dm = Fit_fn.power_dict['ones_dm_adv_ones_dm_adv']
+    ax1.errorbar(k_avg[:, i], pk_dm[:, i]*k_avg[:, i]**3/2./np.pi**2, yerr=np.sqrt(2./Fit_fn.Nmode[:, i])*pk_dm[:, i]*k_avg[:, i]**3/2./np.pi**2, capsize=4, label="DM")
     ax1.legend()
     ax1.set_xscale('log')
     ax1.set_yscale('log')
@@ -304,5 +318,5 @@ for i in range(1):
 # plt.close()
 # plt.figure(3)
 plt.tight_layout()
-plt.savefig("../figures/output_plots_z_" + str(z_mock) + "_2.png")
+plt.savefig("../figures/output_plots_z_" + str(z_mock) + "_4.png")
 plt.close()

@@ -12,6 +12,7 @@ import numba
 from scipy.fft import rfftn, irfftn
 
 from abacusnbody.metadata import get_meta
+from abacusnbody.analysis.power_spectrum import calc_pk_from_deltak #computes power spectrum from density contrast, not specific to abacus 
 
 from asdf.exceptions import AsdfWarning
 warnings.filterwarnings('ignore', category=AsdfWarning)
@@ -103,6 +104,22 @@ def load_tau(z, path):
     result = np.load(path + 'tau_3d_snap_' + string + '.npy')
     return result
 
+def load_Y_compton(z, path):
+    """
+    Load gas field for the MillenniumTNG Simulation
+    """
+    if z==0.:
+        string = '264'
+    elif z==0.5:
+        string = '214'
+    elif z==1.0:
+        string = '179'
+    else:
+        raise Exception("Redshift z is not one of the allowed values")
+    
+    result = np.load(path + 'Y_compton_3d_snap_' + string + '.npy')
+    return result
+
 def load_GroupPos(z, path):
     """
     Load Halo Group Positions for the MillenniumTNG Simulation
@@ -136,6 +153,55 @@ def load_GroupMass(z, path):
     result = np.load(path + 'Group_M_TopHat200_fp_' + string + '.npy')
     return result
 
+def load_SubhaloPos(z, path):
+    """
+    Load SubHalo Group Positions for the MillenniumTNG Simulation
+    """
+    if z==0.:
+        string = '264'
+    elif z==0.5:
+        string = '214'
+    elif z==1.0:
+        string = '179'
+    else:
+        raise Exception("Redshift z is not one of the allowed values")
+    
+    result = np.load(path + 'SubhaloPos_fp_' + string + '.npy')
+    return result
+
+def load_SubhaloMassType(z, path):
+    """
+    Load SubHalo Group Mass Type for the MillenniumTNG Simulation
+    """
+    if z==0.:
+        string = '264'
+    elif z==0.5:
+        string = '214'
+    elif z==1.0:
+        string = '179'
+    else:
+        raise Exception("Redshift z is not one of the allowed values")
+    
+    result = np.load(path + 'SubhaloMassType_fp_' + string + '.npy')
+    return result
+
+def load_SubhaloGroupNr(z, path):
+    """
+    Load SubHalo Group Number for the MillenniumTNG Simulation
+    """
+    if z==0.:
+        string = '264'
+    elif z==0.5:
+        string = '214'
+    elif z==1.0:
+        string = '179'
+    else:
+        raise Exception("Redshift z is not one of the allowed values")
+    
+    result = np.load(path + 'SubhaloGroupNr_fp_' + string + '.npy')
+    return result
+
+
 def make_cross_corr(field1, field2, Lbox=500, kmax=10):
     mesh1 = ArrayMesh(field1, BoxSize=[Lbox]*3)
     mesh2 = ArrayMesh(field2, BoxSize=[Lbox]*3)
@@ -149,8 +215,50 @@ def make_cross_corr(field1, field2, Lbox=500, kmax=10):
     Pk2 = r2.power['power'].real[1:]
     Pk_cross = cross.power['power'].real[1:]
     r_cc = Pk_cross / np.sqrt(Pk1 * Pk2)
+    del mesh1, mesh2
+    gc.collect()
     return kk, r_cc
 
+def make_cross_corr2(field1, field2, Lbox=500, kmax=10, kbins=101):
+    '''
+    This one uses abacus instead of nbodykit
+    '''
+    k_bin_edges = np.linspace(1e-2, kmax, kbins)
+    mu_bin_edges = np.array([0., 1.])
+    field1_fft = (rfftn(field1, workers=-1)/ np.complex64(field1.size))
+    field2_fft = (rfftn(field2, workers=-1)/ np.complex64(field2.size))
+    result1 = calc_pk_from_deltak(field1_fft, Lbox, k_bin_edges, mu_bin_edges)
+    pk1 = result1['power']
+    k_avg1 = result1['k_avg']
+    
+    result2 = calc_pk_from_deltak(field2_fft, Lbox, k_bin_edges, mu_bin_edges)
+    pk2 = result2['power']
+    k_avg2 = result2['k_avg']
+
+    resultx = calc_pk_from_deltak(field1_fft, Lbox, k_bin_edges, mu_bin_edges, field2_fft=field2_fft)
+    pkx = resultx['power']
+    k_avgx = resultx['k_avg']
+    
+    r_cc = pkx / np.sqrt(pk1 * pk2)
+    return k_avg1, r_cc
+
+def calc_power(field1, Lbox=500, kmax=10, kbins=101, field2=None):
+    '''
+    This one uses abacus instead of nbodykit
+    '''
+    k_bin_edges = np.linspace(1e-2, kmax, kbins)
+    mu_bin_edges = np.array([0., 1.])
+    
+    field1_fft = (rfftn(field1, workers=-1)/ np.complex64(field1.size))
+    if field2 is None:
+        result = calc_pk_from_deltak(field1_fft, Lbox, k_bin_edges, mu_bin_edges)
+    else:
+        field2_fft = (rfftn(field2, workers=-1)/ np.complex64(field2.size))
+        result = calc_pk_from_deltak(field1_fft, Lbox, k_bin_edges, mu_bin_edges, field2_fft=field2_fft)
+
+    pk1 = result['power']
+    k_avg1 = result['k_avg']
+    return k_avg1, pk1
 
 def gaussian_filter(field, nmesh, lbox, kcut):
     """

@@ -38,17 +38,19 @@ from velocileptors.LPT.cleft_fftw import CLEFT
 class HEFTFit(object):
     def __init__(self, ones_dm_adv, delta_dm_adv, delta_dm_squared_adv, 
                  s2_dm_adv, nabla2_dm_adv, delta_tau, Lbox, nmesh, kmin=1e-2, 
-                 kmax=10, logscale=False, npoints=21):
+                 kmax=10, logscale=False, npoints=101):
         
         self.Lbox = Lbox
         self.nmesh = nmesh
         
         self.delta_tau = delta_tau
-        self.ones_dm_adv = ones_dm_adv
-        self.delta_dm_adv = delta_dm_adv
-        self.delta_dm_squared_adv = delta_dm_squared_adv
-        self.s2_dm_adv = s2_dm_adv
-        self.nabla2_dm_adv = nabla2_dm_adv
+        # self.ones_dm_adv = ones_dm_adv
+        # self.delta_dm_adv = delta_dm_adv
+        # self.delta_dm_squared_adv = delta_dm_squared_adv
+        # self.s2_dm_adv = s2_dm_adv
+        # self.nabla2_dm_adv = nabla2_dm_adv
+        
+        self.ones_dm_adv_size = ones_dm_adv.size
         
         self.delta_tau_obs_fft = (rfftn(delta_tau, workers=-1) 
                                   / np.complex64(delta_tau.size))
@@ -101,8 +103,9 @@ class HEFTFit(object):
         self.make_power_dict()
             
     
-    def fit(self, option, kmin=0.0, kmax=0.4, mumax=1.01, save=True, return_val=False, 
-            verbose=True, nbins=21):
+    def fit(self, option, kmin=0.0, kmax=5, 
+            mumax=1.01, save=True, return_val=False, verbose=True,
+            nbins=41, use_kbin=True, operators=None):
         '''
         Fit the 1cb, delta, delta^2, nabla^2 and tidal^2 fields to the Tau field,
         using one of four options:
@@ -114,8 +117,16 @@ class HEFTFit(object):
         if verbose:
             print(option)
         
+        if use_kbin:
+            kmin = self.k_bin_edges[0]
+            kmax = self.k_bin_edges[-1]
+            nbins = len(self.k_bin_edges)
+        
         if option == 'field-level-brute':
         # Field-level fit
+            if operators is not None:
+                print('TODO: changing operators not yet supported for field-level-brute')
+        
             def mini_fun(bias):
                 b1, b2, bs, bn = np.real(bias)
                 delta_model_fft_cut = ones_dm_adv_fft_cut + b1*delta_dm_adv_fft_cut + b2*delta_dm_squared_adv_fft_cut + bs*s2_dm_adv_fft_cut + bn*nabla2_dm_adv_fft_cut
@@ -176,8 +187,9 @@ class HEFTFit(object):
             s2_dm_adv_fft_cut = self.s2_dm_adv_fft[threshold]
             #self.k2_cut = self.k2[(self.k2 < kmax**2) & (self.k2 > kmin**2)]
 
-
-            operators = ["delta_dm_adv", "delta_dm_squared_adv", "s2_dm_adv", "nabla2_dm_adv"]
+            if operators is None:
+                operators = ["delta_dm_adv", "delta_dm_squared_adv", "s2_dm_adv", "nabla2_dm_adv"]
+            
             A_dict = {}
             M_dict = {}
             for i, operator_i in enumerate(operators):
@@ -198,8 +210,8 @@ class HEFTFit(object):
                 print(N_points)
                 print(one_bias_alt)
 
-            pk_mod_alt = self.get_power_model(one_bias_alt, kmin=0., kmax=np.inf)
-            pk_tau_mod_alt = self.get_cross_power_model(one_bias_alt, kmin=0., kmax=np.inf)
+            pk_mod_alt = self.get_power_model(one_bias_alt, kmin=0., kmax=np.inf, operators=operators)
+            pk_tau_mod_alt = self.get_cross_power_model(one_bias_alt, kmin=0., kmax=np.inf, operators=operators)
             r_pk_alt = pk_tau_mod_alt/(np.sqrt(self.pk_tau*pk_mod_alt))
             pk_err_alt = pk_mod_alt - 2*pk_tau_mod_alt + self.pk_tau
 
@@ -218,15 +230,18 @@ class HEFTFit(object):
             # Fits for scale-dependent bias
             # kbins = np.linspace(0., 1., 21) # best
             kbins = np.linspace(kmin, kmax, nbins) # best
-
-            operators = ["delta_dm_adv", "delta_dm_squared_adv", "s2_dm_adv", "nabla2_dm_adv"]
+            kmin0 = kmin
+            kmax0 = kmax
+            
+            if operators is None:
+                operators = ["delta_dm_adv", "delta_dm_squared_adv", "s2_dm_adv", "nabla2_dm_adv"]
             for k in range(len(kbins)-1):
                 kmax = kbins[k+1]
                 kmin = kbins[k]
                 mumax = 1.01 # 0.1
                 
                 vals_dict = self.fit('field-level-matrix', kmin=kmin, kmax=kmax, mumax=mumax, 
-                                     save=False, return_val=True, verbose=False)
+                                     save=False, return_val=True, verbose=False, use_kbin=False, operators=operators)
                 one_bias = vals_dict['one_bias']
                 
                 # print(one_bias)
@@ -234,6 +249,8 @@ class HEFTFit(object):
                     one_bias_bk = one_bias
                 else:
                     one_bias_bk = np.vstack((one_bias_bk, one_bias[:1+len(operators)]))
+                if verbose and k%10==0:
+                    print(k, nbins)                    
             if verbose:
                 print(one_bias_bk)
             
@@ -248,9 +265,9 @@ class HEFTFit(object):
 
             # get power spectrum
             pk_mod_bk = self.get_power_model(np.hstack((one_bias_bk[2], np.zeros(5 - len(one_bias_bk[2])))), 
-                                             kmin=0., kmax=np.inf)
+                                             kmin=0., kmax=np.inf, operators=operators)
             pk_tau_mod_bk = self.get_cross_power_model(np.hstack((one_bias_bk[2], np.zeros(5 - len(one_bias_bk[2])))),
-                                                      kmin=0., kmax=np.inf)
+                                                      kmin=0., kmax=np.inf, operators=operators)
             #r_pk_bk = pk_tau_mod_bk/(np.sqrt(pk_tau*pk_mod_bk))
             #pk_err_bk = pk_mod_bk - 2*pk_tau_mod_bk + pk_tau
 
@@ -258,8 +275,8 @@ class HEFTFit(object):
             for k in range(len(kbins)-1):
                 kmax = kbins[k+1]
                 kmin = kbins[k]
-                pk_mod_bk[(kmin < self.k_avg) & (self.k_avg <= kmax)] = self.get_power_model(np.hstack((one_bias_bk[k], np.zeros(5 - len(one_bias_bk[k])))), kmin=0., kmax=np.inf)[(kmin < self.k_avg) & (self.k_avg <= kmax)]
-                pk_tau_mod_bk[(kmin < self.k_avg) & (self.k_avg <= kmax)] = self.get_cross_power_model(np.hstack((one_bias_bk[k], np.zeros(5 - len(one_bias_bk[k])))), kmin=0., kmax=np.inf)[(kmin < self.k_avg) & (self.k_avg <= kmax)]
+                pk_mod_bk[(kmin < self.k_avg) & (self.k_avg <= kmax)] = self.get_power_model(np.hstack((one_bias_bk[k], np.zeros(5 - len(one_bias_bk[k])))), kmin=0., kmax=np.inf, operators=operators)[(kmin < self.k_avg) & (self.k_avg <= kmax)]
+                pk_tau_mod_bk[(kmin < self.k_avg) & (self.k_avg <= kmax)] = self.get_cross_power_model(np.hstack((one_bias_bk[k], np.zeros(5 - len(one_bias_bk[k])))), kmin=0., kmax=np.inf, operators=operators)[(kmin < self.k_avg) & (self.k_avg <= kmax)]
             r_pk_bk = pk_tau_mod_bk/(np.sqrt(self.pk_tau*pk_mod_bk))
             pk_err_bk = pk_mod_bk - 2*pk_tau_mod_bk + self.pk_tau
 
@@ -267,17 +284,19 @@ class HEFTFit(object):
                 return_dict = dict(k_avg=self.k_avg, Nmode=self.Nmode, 
                          pk_tau=self.pk_tau, pk_tau_mod=pk_tau_mod_bk, pk_mod=pk_mod_bk, 
                          pk_err=pk_err_bk, r_pk=r_pk_bk, one_bias=one_bias_bk, 
-                         kbinc=kbinc)
+                         kbinc=kbinc, kbins=kbins)
                 return return_dict
             if save:
                 np.savez(f"data/pk_bk_bias.npz", k_avg=self.k_avg, Nmode=self.Nmode, 
                          pk_tau=self.pk_tau, pk_tau_mod=pk_tau_mod_bk, pk_mod=pk_mod_bk, 
                          pk_err=pk_err_bk, r_pk=r_pk_bk, one_bias=one_bias_bk, 
-                         kbinc=kbinc)
+                         kbinc=kbinc, kbins=kbins)
         
         elif option == 'power-spectrum':
             # Power-spectrum fit
-            
+            if operators is not None:
+                print('TODO: changing operators not yet supported for field-level-brute')
+                
             def mini_fun_pk(bias, kmin=kmin, kmax=kmax, mumax=mumax):
                 one_bias = np.hstack(([1.], bias))
                 pk_mod_cut = self.get_power_model(one_bias, kmin, kmax, mumax)
@@ -324,19 +343,33 @@ class HEFTFit(object):
                              + 'or power-spectrum')
                               
 
-    def get_power_model(self, one_bias, kmin=0., kmax=np.inf, mumax=np.inf):
+    def get_power_model(self, one_bias, kmin=0., kmax=np.inf, mumax=np.inf, operators=None):
         power_model = np.zeros((np.sum((self.k_binc <= kmax) & (self.k_binc > kmin)), np.sum(self.mu_binc < mumax)))
-        fields = ["ones_dm_adv", "delta_dm_adv", "delta_dm_squared_adv", "s2_dm_adv", "nabla2_dm_adv"]
+        
+        if operators is None:                   
+            fields = ["ones_dm_adv", "delta_dm_adv", "delta_dm_squared_adv", "s2_dm_adv", "nabla2_dm_adv"]
+        elif "ones_dm_adv" in operators:
+            fields = operators
+        else:
+            fields = ["ones_dm_adv"] + operators
+        
         for i, field_i in enumerate(fields):
             for j, field_j in enumerate(fields):
                 power_model += one_bias[i] * one_bias[j] * self.power_dict[f"{field_i}_{field_j}"][((self.k_binc <= kmax) & (self.k_binc > kmin))[:, None] & (self.mu_binc < mumax)[None, :]].reshape(np.sum(((self.k_binc <= kmax) & (self.k_binc > kmin))), np.sum(self.mu_binc < mumax))
         return power_model
 
-    def get_cross_power_model(self, one_bias, kmin=0., kmax=np.inf, mumax=np.inf):
+    def get_cross_power_model(self, one_bias, kmin=0., kmax=np.inf, mumax=np.inf, operators=None):
         power_model = np.zeros((np.sum((self.k_binc <= kmax) & (self.k_binc > kmin)), np.sum(self.mu_binc < mumax)))
-        fields = ["ones_dm_adv", "delta_dm_adv", "delta_dm_squared_adv", "s2_dm_adv", "nabla2_dm_adv"]
+        if operators is None:                   
+            fields = ["ones_dm_adv", "delta_dm_adv", "delta_dm_squared_adv", "s2_dm_adv", "nabla2_dm_adv"]
+        elif "ones_dm_adv" in operators:
+            fields = operators
+        else:
+            fields = ["ones_dm_adv"] + operators
+
         for i, field_i in enumerate(fields):
             power_model += one_bias[i] * self.power_dict[f"delta_tau_obs_{field_i}"][((self.k_binc <= kmax) & (self.k_binc > kmin))[:, None] & (self.mu_binc < mumax)[None, :]].reshape(np.sum(((self.k_binc <= kmax) & (self.k_binc > kmin))), np.sum(self.mu_binc < mumax))
+            
         return power_model
 
     def make_power_dict(self):
@@ -379,7 +412,7 @@ class HEFTFit(object):
 
         self.power_dict = power_dict
         
-    def get_field(self, bias, scale=False):
+    def get_field(self, bias, scale=False, kbins=None):
         '''
         Returns the tau field using the saved fields and the bias input. Tau field
         returns as a np array.
@@ -387,12 +420,30 @@ class HEFTFit(object):
         '''
         
         if scale:
-            print('TODO: have not coded yet')
-            return
+            mumax = 1.01
+            kbins2 = kbins.copy()
+            kbins2[0] = 0.0
+            kbins2[-1] = np.inf
+            delta_tau_fit_fft = np.zeros_like(self.ones_dm_adv_fft)
+            for i, k in enumerate(kbins2[:-1]):
+                bias_k = bias[i]
+                kmin = k
+                kmax = kbins2[i+1]
+                threshold = (self.k2 < kmax**2) & (self.k2 > kmin**2) & (self.mu2 < mumax**2)
+                delta_tau_fit_fft[threshold] = (bias_k[0] * self.ones_dm_adv_fft[threshold]
+                                    + bias_k[1] * self.delta_dm_adv_fft[threshold]
+                                    + bias_k[2] * self.delta_dm_squared_adv_fft[threshold]
+                                    + bias_k[3] * self.s2_dm_adv_fft[threshold]
+                                    + bias_k[4] * self.nabla2_dm_adv_fft[threshold])
+                if i % 10 ==0:
+                    print(i)
+                
+            delta_tau_fit = irfftn(delta_tau_fit_fft * np.complex64(self.ones_dm_adv_size))
+            return delta_tau_fit
         
         else:
             delta_tau_fit_fft = (bias[0] * self.ones_dm_adv_fft + bias[1] * self.delta_dm_adv_fft 
                                  + bias[2] * self.delta_dm_squared_adv_fft + bias[3] * self.s2_dm_adv_fft
                                  + bias[4] * self.nabla2_dm_adv_fft)
-            delta_tau_fit = irfftn(delta_tau_fit_fft * np.complex64(self.ones_dm_adv.size))
+            delta_tau_fit = irfftn(delta_tau_fit_fft * np.complex64(self.ones_dm_adv_size))
             return delta_tau_fit
