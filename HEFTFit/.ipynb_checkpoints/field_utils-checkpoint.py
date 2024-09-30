@@ -242,11 +242,11 @@ def make_cross_corr2(field1, field2, Lbox=500, kmax=10, kbins=101):
     r_cc = pkx / np.sqrt(pk1 * pk2)
     return k_avg1, r_cc
 
-def calc_power(field1, Lbox=500, kmax=10, kbins=101, field2=None):
+def calc_power(field1, Lbox=500, kmax=10, kmin=1e-2, kbins=101, field2=None, Nmodes=False):
     '''
-    This one uses abacus instead of nbodykit
+    Calculates power of a field given kmin, kmax and kbins using abacus toolkit
     '''
-    k_bin_edges = np.linspace(1e-2, kmax, kbins)
+    k_bin_edges = np.linspace(kmin, kmax, kbins)
     mu_bin_edges = np.array([0., 1.])
     
     field1_fft = (rfftn(field1, workers=-1)/ np.complex64(field1.size))
@@ -258,7 +258,35 @@ def calc_power(field1, Lbox=500, kmax=10, kbins=101, field2=None):
 
     pk1 = result['power']
     k_avg1 = result['k_avg']
-    return k_avg1, pk1
+    
+    if not Nmodes:
+        return k_avg1, pk1
+    else:
+        Nmodes = result['N_mode']
+        return k_avg1, pk1, Nmodes
+
+
+def calc_power2(field1, k_bin_edges, Lbox=500, field2=None, Nmodes=False):
+    '''
+    Calculates power of a field given the k bin edges using abacus
+    '''
+    mu_bin_edges = np.array([0., 1.])
+    
+    field1_fft = (rfftn(field1, workers=-1)/ np.complex64(field1.size))
+    if field2 is None:
+        result = calc_pk_from_deltak(field1_fft, Lbox, k_bin_edges, mu_bin_edges)
+    else:
+        field2_fft = (rfftn(field2, workers=-1)/ np.complex64(field2.size))
+        result = calc_pk_from_deltak(field1_fft, Lbox, k_bin_edges, mu_bin_edges, field2_fft=field2_fft)
+
+    pk1 = result['power']
+    k_avg1 = result['k_avg']
+    
+    if not Nmodes:
+        return k_avg1, pk1
+    else:
+        Nmodes = result['N_mode']
+        return k_avg1, pk1, Nmodes
 
 def gaussian_filter(field, nmesh, lbox, kcut):
     """

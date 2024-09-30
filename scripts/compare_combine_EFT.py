@@ -40,12 +40,12 @@ t0 = time.time()
 # Configs
 print('Load Configs', time.time()-t0)
 heft_dir = '/pscratch/sd/r/rhliu/projects/heft_scratch/'
-fig_path = '../figures/good/'
+fig_path = '../figures/test/'
 kcut = 0. # for linear power spectrum for velocileptors?
 z_mock = 0.0 # config['sim_params']['z_mock']
 z_str = '0.54' # for loading the camels pkratios
 z_str = '0.00' # for loading the camels pkratios
-str_i = 8
+str_i = 10
 str_i = str(str_i)
 
 paste = "TSC"
@@ -194,7 +194,7 @@ gc.collect()
 
 dict_list = []
 options = ['field-level-brute', 'field-level-scale', 'field-level-matrix', 'power-spectrum']
-options = ['field-level-scale', 'field-level-matrix', 'power-spectrum']
+options = ['field-level-scale', 'field-level-matrix']#, 'power-spectrum']
 for option in options:
     
     # print(option)
@@ -369,7 +369,7 @@ for i in range(1):
         pk_err = dict_list[j]['pk_err']
         ax2.plot(k_avg[:, i], np.abs(pk_err/pk_tau)[:, i], label=option)
         
-    ax2.plot(kk, (Pk_error_tf/pk_tau)
+    # ax2.plot(kk, (Pk_error_tf/pk_tau))
     ax2.legend()
     ax2.set_xscale('log')
     ax2.set_yscale('log')

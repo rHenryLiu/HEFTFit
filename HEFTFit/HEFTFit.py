@@ -105,7 +105,7 @@ class HEFTFit(object):
     
     def fit(self, option, kmin=0.0, kmax=5, 
             mumax=1.01, save=True, return_val=False, verbose=True,
-            nbins=41, use_kbin=True, operators=None):
+            nbins=41, use_kbin=True, operators=None, fit_amplitude=False):
         '''
         Fit the 1cb, delta, delta^2, nabla^2 and tidal^2 fields to the Tau field,
         using one of four options:
@@ -113,6 +113,20 @@ class HEFTFit(object):
         option = 'field-level-scale' # Field level scale dependence
         option = 'field-level-matrix' # From 2112.00012
         option = 'power-spectrum' # straightforward power spectra
+        
+        parameters:
+        option - described above
+        kmin - minimum k for fit - defaults to kbins from HEFTFit class
+        kmax - maximum k for fit - defaults to kbins from HEFTFit class
+        mumax - maximum mu for fit
+        save - whether to save fitted values (bias, power spectra, etc.) to disk
+        return_val - whether to return fitted values as a dict
+        verbose - verbosity of function
+        nbins - number of k bins - defaults to kbins from HEFTFit class
+        use_kbin - whether to use the default kbins
+        operators - list of field-level operators for matrix and scale dependent fits
+        fit_amplitude - Amplitude fit to modify biased parameters. This is a single-parameter fit
+        to modify the amplitude of our field to match power spectra.
         '''
         if verbose:
             print(option)
@@ -193,7 +207,10 @@ class HEFTFit(object):
             A_dict = {}
             M_dict = {}
             for i, operator_i in enumerate(operators):
-                A_dict[operator_i] = np.sum(locals()[f"{operator_i}_fft_cut"]*np.conj(delta_tau_obs_fft_cut - ones_dm_adv_fft_cut))
+                if 'ones_dm_adv' in operators:
+                    A_dict[operator_i] = np.sum(locals()[f"{operator_i}_fft_cut"]*np.conj(delta_tau_obs_fft_cut))
+                else:
+                    A_dict[operator_i] = np.sum(locals()[f"{operator_i}_fft_cut"]*np.conj(delta_tau_obs_fft_cut - ones_dm_adv_fft_cut))
                 for j, operator_j in enumerate(operators):
                     if i < j: continue
                     M_dict[f"{operator_i}_{operator_j}"] = np.sum(locals()[f"{operator_i}_fft_cut"]*np.conj(locals()[f"{operator_j}_fft_cut"]))
@@ -205,7 +222,22 @@ class HEFTFit(object):
                 A_vect[i] = A_dict[operators[i]]
                 for j in range(len(operators)):
                     M_matr[i, j] = M_dict[f"{operators[i]}_{operators[j]}"]
-            one_bias_alt = np.hstack((1., np.dot(np.linalg.inv(M_matr), A_vect).real))
+            
+            if 'ones_dm_adv' in operators:
+                one_bias_alt = np.hstack((np.dot(np.linalg.inv(M_matr), A_vect).real))
+            else:
+                one_bias_alt = np.hstack((1., np.dot(np.linalg.inv(M_matr), A_vect).real))
+
+            if fit_amplitude:
+                pk_mod = self.get_power_model(one_bias_alt, kmin=0., kmax=np.inf, operators=operators)
+                error = pk_mod / np.sqrt(self.Nmode)
+                # amplitude2 = self.pk_tau / pk_mod # simple ratio amplitude method
+                # amplitude2 = np.sum(self.pk_tau*pk_mod) / np.sum(pk_mod**2) # minimizing MSE amplitude method
+                amplitude2 = np.sum((self.pk_tau/error)*(pk_mod/error)) / np.sum((pk_mod/error)**2) # minimizing MSE amplitude method with error
+                amplitude = np.sqrt(amplitude2)
+                one_bias_alt = amplitude * one_bias_alt
+
+            
             if verbose:
                 print(N_points)
                 print(one_bias_alt)
@@ -247,10 +279,23 @@ class HEFTFit(object):
                 # print(one_bias)
                 if k == 0:
                     one_bias_bk = one_bias
+                    pk_mod = vals_dict['pk_mod']
                 else:
                     one_bias_bk = np.vstack((one_bias_bk, one_bias[:1+len(operators)]))
+                    pk_mod[k] = vals_dict['pk_mod'][k]
+                
                 if verbose and k%10==0:
                     print(k, nbins)                    
+            
+            if fit_amplitude:
+                error = pk_mod / np.sqrt(self.Nmode)
+                # amplitude2 = self.pk_tau / pk_mod # simple ratio amplitude method
+                # amplitude2 = np.sum(self.pk_tau*pk_mod) / np.sum(pk_mod**2) # minimizing MSE amplitude method
+                amplitude2 = np.sum((self.pk_tau/error)*(pk_mod/error)) / np.sum((pk_mod/error)**2) # minimizing MSE amplitude method with error
+                amplitude = np.sqrt(amplitude2)
+                one_bias_bk = amplitude * one_bias_bk
+
+                
             if verbose:
                 print(one_bias_bk)
             
@@ -295,7 +340,7 @@ class HEFTFit(object):
         elif option == 'power-spectrum':
             # Power-spectrum fit
             if operators is not None:
-                print('TODO: changing operators not yet supported for field-level-brute')
+                print('TODO: changing operators not yet supported for power-spectrum')
                 
             def mini_fun_pk(bias, kmin=kmin, kmax=kmax, mumax=mumax):
                 one_bias = np.hstack(([1.], bias))
